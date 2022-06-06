@@ -14,8 +14,8 @@
     echo "dns recovervpc: vpc网络dns服务切换到默认链路"
     echo "dns checkbase: 基础网络dns配置抽查"
     echo "dns checkvpc: vpc网络dns配置抽查"
-    echo "base clean: 清理对应service的nscd缓存"
-    echo "vpc clean: 清理对应service的nscd缓存"
+    echo "clean base: 清理基础网络设备nscd缓存"
+    echo "clean vpc: 清理私有网络设备nscd缓存"
     echo "hosts changebase: 基础网络修改hosts内容解析"
     echo "hosts changevpc: vpc网络修改hosts内容解析"
     # 这里使用的文件存储版本data +%s
@@ -64,40 +64,82 @@ function dns_checkbase {
         fi
 }
 
-# clean：清理缓存  -- xiedaozheerle
+# clean：清理缓存(跑了俩次，可以优化)
 function clean {
-        #get service iplist
-        curl -s --location -g --request GET 'http://prometheus-base.xiaoe-tools.com/api/v1/query?query=up{PrivateIpAddresses!~"10.0.*"}'|jq|grep 'PrivateIpAddresses'|awk -F'\"'  '{print $(NF-1)}' > logs/tmp_$1\_hostlist
-        #change port in cvm
-        iplistfile="logs/tmp_"$1"_hostlist"
-        ansible -i $iplistfile all -m shell -a 'pwd' -ujms -b -f 50 -T 2 |grep 'UNREACHABLE!' > ./tmp_erriplist
-        if [ $? -eq 0 ];then
-          remote_port=`grep remote_port /etc/ansible/ansible.cfg|tail -1|awk '{print $NF}'`
-          list=`cat tmp_erriplist|awk '{print $1}'`
-          if [ $remote_port == '51800' ];then
-            #修改异常ip对应端口为非标准化端口: 22
-            for i in $list
-              do
-                sed -i "s/^$i$/$i\ ansible_ssh_port=22/" $iplistfile
-              done
-          else
-            for i in $list
-              do
-                sed -i "s/^$i$/$i\ ansible_ssh_port=51800/" $iplistfile
-              done
-          fi
-        fi
-        #ansible clean
-        echo "------------$1 服务:正在清理nscd缓存----------"
-        ansible -i logs/tmp_$1\_hostlist all -m shell -a "nscd -i hosts" -ujms -b -f 50 -T 2
-        #ansible print
-        echo "------------$1 服务:查看nscd命中率----------"
-        ansible -i logs/tmp_$1\_hostlist all -m shell -a "nscd -g |egrep 'hosts cache|cache hit rate'|head -4|tail -2" -ujms -b -f 50 -T 2
-        #清理tmp文件
-        rm -f tmp_erriplist
+  if [ $1 == 'base' ];then
+    #get base iplist
+    curl -s --location -g --request GET 'http://prometheus-base.xiaoe-tools.com/api/v1/query?query=up{PrivateIpAddresses!~"10.0.*"}'|jq|grep 'PrivateIpAddresses'|awk -F'\"'  '{print $(NF-1)}' > logs/tmp_$1\_hostlist
+    #change port in cvm
+    iplistfile="logs/tmp_"$1"_hostlist"
+    ansible -i $iplistfile all -m shell -a 'pwd' -ujms -b -f 50 -T 2 |grep 'UNREACHABLE!' > ./tmp_erriplist
+    if [ $? -eq 0 ];then
+      remote_port=`grep remote_port /etc/ansible/ansible.cfg|tail -1|awk '{print $NF}'`
+      list=`cat tmp_erriplist|awk '{print $1}'`
+      if [ $remote_port == '51800' ];then
+        #修改异常ip对应端口为非标准化端口: 22
+        for i in $list
+          do
+            sed -i "s/^$i$/$i\ ansible_ssh_port=22/" $iplistfile
+          done
+      else
+        for i in $list
+          do
+            sed -i "s/^$i$/$i\ ansible_ssh_port=51800/" $iplistfile
+          done
+      fi
+    fi
+    #ansible clean
+    echo "------------$1 服务:正在清理nscd缓存----------"
+    ansible -i logs/tmp_$1\_hostlist all -m shell -a "nscd -i hosts" -ujms -b -f 50 -T 2
+    #ansible print
+    echo "------------$1 服务:查看nscd命中率----------"
+    ansible -i logs/tmp_$1\_hostlist all -m shell -a "nscd -g |egrep 'hosts cache|cache hit rate'|head -4|tail -2" -ujms -b -f 50 -T 2
+    #清理tmp文件
+    rm -f tmp_erriplist
+  elif [ $1 == 'vpc' ];then
+    #get base iplist
+    curl -s --location -g --request GET 'http://prometheus-base.xiaoe-tools.com/api/v1/query?query=up{PrivateIpAddresses=~"10.0.*",InstanceName!~".*数据分析.*|.*emr.*"}'|jq|grep 'PrivateIpAddresses'|awk -F'\"'  '{print $(NF-1)}' > logs/tmp_$1\_hostlist
+    #change port in cvm
+    iplistfile="logs/tmp_"$1"_hostlist"
+    ansible -i $iplistfile all -m shell -a 'pwd' -ujms -b -f 50 -T 2 |grep 'UNREACHABLE!' > ./tmp_erriplist
+    if [ $? -eq 0 ];then
+      remote_port=`grep remote_port /etc/ansible/ansible.cfg|tail -1|awk '{print $NF}'`
+      list=`cat tmp_erriplist|awk '{print $1}'`
+      if [ $remote_port == '51800' ];then
+        #修改异常ip对应端口为非标准化端口: 22
+        for i in $list
+          do
+            sed -i "s/^$i$/$i\ ansible_ssh_port=22/" $iplistfile
+          done
+      else
+        for i in $list
+          do
+            sed -i "s/^$i$/$i\ ansible_ssh_port=51800/" $iplistfile
+          done
+      fi
+    fi
+    #ansible clean
+    echo "------------$1 服务:正在清理nscd缓存----------"
+    ansible -i logs/tmp_$1\_hostlist all -m shell -a "nscd -i hosts" -ujms -b -f 50 -T 2
+    #ansible print
+    echo "------------$1 服务:查看nscd命中率----------"
+    ansible -i logs/tmp_$1\_hostlist all -m shell -a "nscd -g |egrep 'hosts cache|cache hit rate'|head -4|tail -2" -ujms -b -f 50 -T 2
+    #清理tmp文件
+    rm -f tmp_erriplist
+  else
+    echo "程序错误，请确认输入是否正确."
+  fi
 }
 
-function base_hosts {
+'''
+    echo "hosts changebase: 基础网络修改hosts内容解析"
+    echo "hosts changevpc: vpc网络修改hosts内容解析"
+    # 这里使用的文件存储版本data +%s
+    echo "hosts recoverbase: 恢复hosts上一次解析内容"
+    echo "hosts recovervpc: 恢复hosts上一次解析内容"
+'''
+#  is there
+function hosts_change {
         cd /home/dprs/rongzai/
         if [ $1 == 'change' ];then
           echo "------------基础网络下，替换hosts文件----------"
