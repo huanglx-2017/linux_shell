@@ -138,10 +138,15 @@ function clean {
     echo "hosts recoverbase: 恢复hosts上一次解析内容"
     echo "hosts recovervpc: 恢复hosts上一次解析内容"
 '''
-#  is there
+#  这里得使用剧本来实现了
 function hosts_change {
         cd /home/dprs/rongzai/
         if [ $1 == 'change' ];then
+          echo "------------基础网络下，备份hosts文件----------"
+          time=`date +%s`
+          logfile='/tmp/hosts-changelist.log'
+          cp -a /etc/hosts /etc/hosts-{$time}
+          echo $time >> $logfile
           echo "------------基础网络下，替换hosts文件----------"
           sleep 1
           ansible -i base_hosts_list all -m copy -a 'src=./resolution_base.list dest=/etc/hosts' -ujms -b -f 50 -T 2
